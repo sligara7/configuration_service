@@ -7,14 +7,14 @@ Other services query this registry to discover what devices exist, how to instan
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+uv sync
 ```
 
 ## Quick start
 
 ```bash
 # Run with built-in mock data (no profile collection needed)
-bluesky-configuration-service --use-mock-data
+uv run bluesky-configuration-service --use-mock-data
 
 # Open http://localhost:8004/docs for the Swagger UI
 ```
@@ -22,7 +22,7 @@ bluesky-configuration-service --use-mock-data
 ## Run tests
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/
 ```
 
 ## Documentation

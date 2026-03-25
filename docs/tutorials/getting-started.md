@@ -4,11 +4,11 @@ This tutorial walks through starting the Configuration Service, exploring its AP
 
 ## Prerequisites
 
-Install the service in development mode:
+Install the service:
 
 ```bash
 cd configuration_service
-pip install -e ".[dev]"
+uv sync
 ```
 
 ## Start the service
@@ -16,7 +16,7 @@ pip install -e ".[dev]"
 We will use mock mode, which loads three built-in devices (`sample_x`, `det1`, `cam1`) so we can explore the API without needing a real beamline profile.
 
 ```bash
-bluesky-configuration-service --use-mock-data
+uv run bluesky-configuration-service --use-mock-data
 ```
 
 You should see output like:
@@ -248,10 +248,10 @@ You will see `seed`, `add`, and `delete` entries with timestamps.
 Stop the service (Ctrl+C) and run the test suite:
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/
 ```
 
-All 151 tests use mock data and run in about 18 seconds.
+All 151 tests use mock data and run in about 12 seconds.
 
 ## Next steps
 

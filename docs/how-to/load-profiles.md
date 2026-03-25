@@ -104,7 +104,7 @@ CONFIG_PROFILE_PATH=/path/to/profile CONFIG_LOAD_STRATEGY=startup_scripts bluesk
 This format requires the `scripts` optional dependency:
 
 ```bash
-pip install -e ".[scripts]"    # installs ophyd and bluesky
+uv sync --extra scripts
 ```
 
 Scripts run with `ignore_errors=True`, so individual failures do not crash the service. Devices from successful scripts are still loaded.
