@@ -54,9 +54,9 @@ dev = [
 bluesky-configuration-service = "configuration_service.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/sligara7/configuration-service"
-Documentation = "https://github.com/sligara7/configuration-service"
-Repository = "https://github.com/sligara7/configuration-service"
+Homepage = "https://github.com/NSLS2/bluesky-configuration-service"
+Documentation = "https://github.com/NSLS2/bluesky-configuration-service"
+Repository = "https://github.com/NSLS2/bluesky-configuration-service"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/configuration_service"]
