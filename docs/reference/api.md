@@ -76,6 +76,16 @@ Interactive documentation: `http://localhost:8004/docs` (Swagger UI)
 | GET | `/api/v1/devices/{device_name}/status` | Lock and enabled state. Returns `{available, enabled, lock_status}` |
 | GET | `/api/v1/pvs/status` | PV availability via owning device. Query param: `pv_name` (required) |
 
+## Metadata
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/metadata` | List all metadata entries, sorted by key |
+| GET | `/api/v1/metadata/{key}` | Get a single metadata entry. 404 if not found |
+| POST | `/api/v1/metadata/{key}` | Create a metadata entry. Body: `{value: {...}}`. 409 if key exists |
+| PUT | `/api/v1/metadata/{key}` | Create or replace a metadata entry (upsert). Body: `{value: {...}}` |
+| DELETE | `/api/v1/metadata/{key}` | Delete a metadata entry. 404 if not found |
+
 ## Device Components
 
 | Method | Path | Description |

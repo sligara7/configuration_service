@@ -116,6 +116,17 @@ Append-only change log entry.
 | `timestamp` | float | Unix timestamp |
 | `details` | str | Optional JSON with context |
 
+## MetadataEntry
+
+A stored metadata key-value entry.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `key` | str | required | Unique string key |
+| `value` | dict[str, Any] | required | Arbitrary JSON dictionary |
+| `created_at` | float | `None` | Unix timestamp of creation |
+| `updated_at` | float | `None` | Unix timestamp of last update |
+
 ## Request/Response Models
 
 **DeviceCreateRequest**: `{metadata: DeviceMetadata, instantiation_spec: DeviceInstantiationSpec}`
@@ -131,3 +142,7 @@ Append-only change log entry.
 **DeviceStatusResponse**: `{device_name: str, available: bool, enabled: bool, lock_status: str, locked_by_plan?: str, locked_by_item?: str, locked_at?: str}`
 
 **PVStatusResponse**: `{pv_name: str, available: bool, device_name?: str, device_enabled?: bool, device_lock_status?: str, locked_by_plan?: str}`
+
+**MetadataWriteRequest**: `{value: dict[str, Any]}`
+
+**MetadataCRUDResponse**: `{success: bool, key: str, operation: str, message: str}`
