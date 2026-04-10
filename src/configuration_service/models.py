@@ -4,9 +4,30 @@ Domain models for Configuration Service (SVC-004).
 These models represent the core entities for the device/PV registry.
 """
 
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Type, Union, get_args
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
+
+
+def make_partial_model(
+    model: Type[BaseModel], name: str = None
+) -> Type[BaseModel]:
+    """Create a copy of *model* where every field is Optional with default None.
+
+    Used to generate partial-update request models from canonical models.
+    Fields added to the base model are automatically available in the
+    partial variant, eliminating field-drift risk.
+
+    Works with ``model_dump(exclude_unset=True)`` to distinguish
+    "not sent" from "sent as None".
+    """
+    fields = {}
+    for field_name, field_info in model.model_fields.items():
+        ann = field_info.annotation
+        if type(None) not in get_args(ann):
+            ann = Optional[ann]
+        fields[field_name] = (ann, Field(default=None, description=field_info.description))
+    return create_model(name or f"{model.__name__}Update", **fields)
 
 
 class DeviceLabel(str, Enum):
@@ -469,48 +490,8 @@ class DeviceCreateRequest(BaseModel):
         }
 
 
-class DeviceMetadataUpdate(BaseModel):
-    """Partial update model for DeviceMetadata.
-
-    All fields are optional.  Only fields included in the request body
-    are applied; omitted fields keep their current values.  Use with
-    ``model_dump(exclude_unset=True)`` to distinguish "not sent" from
-    "sent as None/default".
-    """
-    name: Optional[str] = Field(default=None, description="Device name")
-    device_label: Optional[DeviceLabel] = Field(default=None, description="Classification of device")
-    ophyd_class: Optional[str] = Field(default=None, description="Ophyd device class name")
-    module: Optional[str] = Field(default=None, description="Python module containing the device class")
-    is_movable: Optional[bool] = Field(default=None, description="Implements Movable protocol")
-    is_flyable: Optional[bool] = Field(default=None, description="Implements Flyable protocol")
-    is_readable: Optional[bool] = Field(default=None, description="Implements Readable protocol")
-    is_triggerable: Optional[bool] = Field(default=None, description="Implements Triggerable protocol")
-    is_stageable: Optional[bool] = Field(default=None, description="Implements Stageable protocol")
-    is_configurable: Optional[bool] = Field(default=None, description="Implements Configurable protocol")
-    is_pausable: Optional[bool] = Field(default=None, description="Implements Pausable protocol")
-    is_stoppable: Optional[bool] = Field(default=None, description="Implements Stoppable protocol")
-    is_subscribable: Optional[bool] = Field(default=None, description="Implements Subscribable protocol")
-    is_checkable: Optional[bool] = Field(default=None, description="Implements Checkable protocol")
-    writes_external_assets: Optional[bool] = Field(default=None, description="Writes external assets")
-    pvs: Optional[Dict[str, str]] = Field(default=None, description="Component name to PV mapping")
-    hints: Optional[Dict[str, Any]] = Field(default=None, description="Bluesky hints for plotting/display")
-    read_attrs: Optional[List[str]] = Field(default=None, description="Readable attributes")
-    configuration_attrs: Optional[List[str]] = Field(default=None, description="Configuration attributes")
-    parent: Optional[str] = Field(default=None, description="Parent device if this is a component")
-    labels: Optional[List[str]] = Field(default=None, description="Device labels for grouping")
-    beamline: Optional[str] = Field(default=None, description="Beamline identifier")
-    location_group: Optional[str] = Field(default=None, description="Location grouping")
-    functional_group: Optional[str] = Field(default=None, description="Functional grouping")
-    documentation: Optional[str] = Field(default=None, description="Device documentation/description")
-
-
-class DeviceInstantiationSpecUpdate(BaseModel):
-    """Partial update model for DeviceInstantiationSpec."""
-    name: Optional[str] = Field(default=None, description="Device name")
-    device_class: Optional[str] = Field(default=None, description="Fully qualified class path")
-    args: Optional[List[Any]] = Field(default=None, description="Positional constructor arguments")
-    kwargs: Optional[Dict[str, Any]] = Field(default=None, description="Keyword constructor arguments")
-    active: Optional[bool] = Field(default=None, description="Whether this device should be instantiated")
+DeviceMetadataUpdate = make_partial_model(DeviceMetadata)
+DeviceInstantiationSpecUpdate = make_partial_model(DeviceInstantiationSpec)
 
 
 class DeviceUpdateRequest(BaseModel):

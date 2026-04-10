@@ -719,6 +719,27 @@ class TestPartialUpdateDevice:
         unchanged = client.get("/api/v1/devices/sample_x").json()
         assert unchanged == original
 
+    def test_partial_update_null_required_field(self, client):
+        """Setting a required field to null exercises the model_validate catch.
+
+        device_label is Optional in the update model (so null passes
+        deserialization), but required in DeviceMetadata (so model_validate
+        rejects it with 422).
+        """
+        response = client.put("/api/v1/devices/sample_x", json={
+            "metadata": {"device_label": None}
+        })
+        assert response.status_code == 422
+        assert "Invalid metadata update" in response.json()["detail"]
+
+    def test_partial_update_null_required_spec_field(self, client):
+        """Setting device_class to null fails model_validate on the spec."""
+        response = client.put("/api/v1/devices/sample_x", json={
+            "instantiation_spec": {"device_class": None}
+        })
+        assert response.status_code == 422
+        assert "Invalid instantiation spec update" in response.json()["detail"]
+
 
 class TestDeleteDeviceEndpoint:
     """Test DELETE /api/v1/devices/{device_name}."""

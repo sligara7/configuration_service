@@ -18,10 +18,10 @@ Architecture:
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Query, status
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import List, Optional, Dict, Any, Annotated
+from typing import List, Optional, Dict, Any, Annotated, Type, TypeVar
 import structlog
 import json
 from .models import (
@@ -68,6 +68,32 @@ structlog.configure(
     ]
 )
 logger = structlog.get_logger()
+
+
+_M = TypeVar("_M", bound=BaseModel)
+
+
+def _apply_partial_update(
+    existing: _M,
+    update: BaseModel,
+    target_cls: Type[_M],
+    label: str,
+) -> _M:
+    """Merge only the fields the caller sent onto an existing model.
+
+    Uses ``model_dump(exclude_unset=True)`` on the update to distinguish
+    "not sent" from "sent as None", then validates the merged result
+    against *target_cls*.  Returns 422 on validation failure.
+    """
+    merged = existing.model_dump()
+    merged.update(update.model_dump(exclude_unset=True))
+    try:
+        return target_cls.model_validate(merged)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid {label}: {exc}",
+        )
 
 
 def _get_device_prefix(device: "DeviceMetadata", registry: "DeviceRegistry") -> Optional[str]:
@@ -1025,32 +1051,29 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 )
 
         # Field-level merge: overlay only the fields the caller sent
-        if request.metadata:
-            updates = request.metadata.model_dump(exclude_unset=True)
-            merged_meta_dict = existing_metadata.model_dump()
-            merged_meta_dict.update(updates)
-            try:
-                merged_metadata = DeviceMetadata.model_validate(merged_meta_dict)
-            except ValidationError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid metadata update: {exc}",
-                )
-        else:
-            merged_metadata = existing_metadata
+        merged_metadata = (
+            _apply_partial_update(existing_metadata, request.metadata, DeviceMetadata, "metadata update")
+            if request.metadata else existing_metadata
+        )
 
         existing_spec = state.registry.get_instantiation_spec(device_name)
         if request.instantiation_spec:
-            updates = request.instantiation_spec.model_dump(exclude_unset=True)
-            merged_spec_dict = existing_spec.model_dump() if existing_spec else {}
-            merged_spec_dict.update(updates)
-            try:
-                merged_spec = DeviceInstantiationSpec.model_validate(merged_spec_dict)
-            except ValidationError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid instantiation spec update: {exc}",
+            if existing_spec:
+                merged_spec = _apply_partial_update(
+                    existing_spec, request.instantiation_spec,
+                    DeviceInstantiationSpec, "instantiation spec update",
                 )
+            else:
+                # No existing spec — treat as creation from the partial fields
+                try:
+                    merged_spec = DeviceInstantiationSpec.model_validate(
+                        request.instantiation_spec.model_dump(exclude_unset=True)
+                    )
+                except ValidationError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Invalid instantiation spec: {exc}",
+                    )
         else:
             merged_spec = existing_spec
 
