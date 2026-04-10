@@ -33,12 +33,6 @@ dependencies = [
     "structlog>=23.2.0",
 ]
 
-[project.optional-dependencies]
-scripts = [
-    "ophyd>=1.9.0",
-    "bluesky>=1.12.0",
-]
-
 [dependency-groups]
 dev = [
     "pytest>=7.4.0",

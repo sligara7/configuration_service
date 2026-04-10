@@ -17,10 +17,13 @@ class Settings(BaseSettings):
 
     Profile Collection Integration:
         The service loads device registries from beamline profile collections:
-        1. startup_scripts: Execute startup scripts and introspect device namespace
-        2. happi: Parse happi_db.json
-        3. bits: Parse devices.yml + iconfig.yml
-        4. mock: Use mock data for testing without profile collection
+        1. happi: Parse happi_db.json
+        2. bits: Parse devices.yml + iconfig.yml
+        3. mock: Use mock data for testing without profile collection
+
+        For profiles that use startup scripts (IPython-style), devices
+        should be registered via the CRUD API — typically by the
+        Experiment Execution Service (SVC-001) at startup.
 
     Set CONFIG_PROFILE_PATH environment variable to point to
     the profile collection directory (e.g., /opt/bluesky/profile_collection).
@@ -34,18 +37,15 @@ class Settings(BaseSettings):
     # Can be set via CONFIG_PROFILE_PATH
     profile_path: Optional[Path] = None
 
-    # Path to startup directory (auto-derived from profile_path if not set)
-    startup_dir: Optional[Path] = None
-
-    # Loading strategy: "auto", "startup_scripts", "happi", "bits", or "mock"
+    # Loading strategy: "auto", "empty", "happi", "bits", or "mock"
     # auto: Auto-detect based on files present in profile_path (default)
-    # startup_scripts: Execute startup scripts and introspect device namespace
+    # empty: Start with zero devices (populated via CRUD API by EE service)
     # happi: Parse happi_db.json (LCLS/SLAC format)
     # bits: Parse devices.yml + iconfig.yml (BCDA-APS format)
     # mock: Use mock data for testing
     load_strategy: str = "auto"
 
-    # If True, use mock data instead of loading from profile (legacy, use load_strategy instead)
+    # Shortcut: if True, overrides load_strategy to "mock"
     use_mock_data: bool = False
 
     # Server configuration
@@ -74,18 +74,4 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
-
-    def get_startup_dir(self) -> Optional[Path]:
-        """Get path to startup directory."""
-        if self.startup_dir:
-            return self.startup_dir
-        if self.profile_path:
-            return self.profile_path / "startup"
-        return None
-
-    def get_effective_load_strategy(self) -> str:
-        """Get effective load strategy, considering legacy use_mock_data flag."""
-        if self.use_mock_data:
-            return "mock"
-        return self.load_strategy
 

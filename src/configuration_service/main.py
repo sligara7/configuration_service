@@ -157,7 +157,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         logger.info(
             "configuration_service_startup",
             profile_path=str(settings.profile_path),
-            load_strategy=settings.get_effective_load_strategy(),
+            load_strategy=settings.load_strategy,
         )
 
         if settings.device_change_history_enabled:
@@ -182,7 +182,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 logger.info(
                     "seeded_from_profile",
                     devices=len(registry.devices),
-                    strategy=settings.get_effective_load_strategy(),
+                    strategy=settings.load_strategy,
                 )
         else:
             # Legacy mode: load from profile every time, no persistence
@@ -191,7 +191,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.info(
                 "loaded_from_profile",
                 devices=len(registry.devices),
-                strategy=settings.get_effective_load_strategy(),
+                strategy=settings.load_strategy,
             )
 
         # Create state container for dependency injection
@@ -1352,9 +1352,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """
         List available PVs.
 
-        When using startup_scripts loading strategy, PVs are discovered by
-        introspecting loaded ophyd devices. For other strategies (happi, bits,
-        mock), PVs are extracted from the device registry.
+        PVs are extracted from the device registry.
 
         Returns a response compatible with the UI's fetchAvailablePVs().
         """
@@ -1382,9 +1380,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def get_pvs_detailed(state: StateDep) -> dict:
         """
         Get detailed PV information organized by device.
-
-        When using startup_scripts loading strategy, PVs are discovered by
-        introspecting loaded ophyd devices and organized by device name.
 
         Returns:
             Dict with devices mapping: {device_name: {signal_path: pv_name}}

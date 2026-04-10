@@ -7,7 +7,6 @@ file-based registry: it reads profile files, constructs DeviceMetadata
 objects from static data, and serves them via the REST API.
 
 Loading strategies:
-- startup_scripts: Execute startup scripts and introspect device namespace
 - happi: Parse happi_db.json
 - bits: Parse devices.yml + iconfig.yml
 - mock: Return sample data for testing
@@ -476,12 +475,23 @@ class MockProfileLoader:
         return registry
 
 
+# ── EmptyProfileLoader ─────────────────────────────────────────────────
+
+class EmptyProfileLoader:
+    """
+    Empty profile loader — starts with zero devices.
+
+    Use this when devices will be registered at runtime via the CRUD API,
+    typically by the Experiment Execution Service (SVC-001).
+    """
+
+    def load_registry(self) -> DeviceRegistry:
+        return DeviceRegistry()
+
+
 # ── Factory and detection ────────────────────────────────────────────────
 
-# Note: ScriptExecutionLoader is not in the union to avoid importing ophyd at
-# module level.  It is returned via lazy import in create_loader() and satisfies
-# the ProfileLoader protocol at runtime.
-ProfileLoaderType = MockProfileLoader | HappiProfileLoader | BitsProfileLoader
+ProfileLoaderType = MockProfileLoader | HappiProfileLoader | BitsProfileLoader | EmptyProfileLoader
 
 
 def detect_profile_type(profile_path: Path) -> str:
@@ -491,13 +501,12 @@ def detect_profile_type(profile_path: Path) -> str:
     Detection order (first match wins):
     1. happi: If happi_db.json, happi.json, or db.json exists
     2. bits: If configs/devices.yml or devices.yml exists
-    3. startup_scripts: If startup/*.py or *.py files exist
 
     Args:
         profile_path: Path to the profile directory
 
     Returns:
-        One of: "happi", "bits", "startup_scripts"
+        One of: "happi", "bits"
 
     Raises:
         ValueError: If no recognizable profile format is detected
@@ -526,20 +535,11 @@ def detect_profile_type(profile_path: Path) -> str:
             logger.info(f"Auto-detected bits format (found {bits_path.name})")
             return "bits"
 
-    # Check for startup_scripts format (Python startup files)
-    startup_dir = profile_path / "startup"
-    if startup_dir.exists() and list(startup_dir.glob("*.py")):
-        logger.info("Auto-detected startup_scripts format (found startup/*.py)")
-        return "startup_scripts"
-
-    if list(profile_path.glob("*.py")):
-        logger.info("Auto-detected startup_scripts format (found *.py in root)")
-        return "startup_scripts"
-
     raise ValueError(
         f"Could not detect profile type for {profile_path}. "
-        f"Expected one of: happi_db.json (happi), devices.yml (bits), "
-        f"or startup/*.py (startup_scripts)"
+        f"Expected one of: happi_db.json (happi) or devices.yml (bits). "
+        f"For profiles with only startup scripts, use the CRUD endpoints "
+        f"to register devices, or set CONFIG_LOAD_STRATEGY=mock."
     )
 
 
@@ -549,10 +549,10 @@ def create_loader(settings: "Settings") -> ProfileLoaderType:
 
     Supported load strategies:
         - auto: Auto-detect based on files present (default)
-        - startup_scripts: Execute startup scripts and introspect devices
         - happi: Parse happi_db.json
         - bits: Parse devices.yml + iconfig.yml
         - mock: Use mock data for testing
+        - empty: Start with zero devices (devices added via CRUD API)
 
     Args:
         settings: Configuration settings
@@ -565,7 +565,11 @@ def create_loader(settings: "Settings") -> ProfileLoaderType:
     """
     from .config import Settings
 
-    load_strategy = settings.get_effective_load_strategy()
+    load_strategy = "mock" if settings.use_mock_data else settings.load_strategy
+
+    if load_strategy == "empty":
+        logger.info("Creating EmptyProfileLoader (devices will be added via CRUD)")
+        return EmptyProfileLoader()
 
     if load_strategy == "mock":
         logger.info("Creating MockProfileLoader")
@@ -586,18 +590,7 @@ def create_loader(settings: "Settings") -> ProfileLoaderType:
             raise RuntimeError(str(e)) from e
 
     # Now create the appropriate loader
-    if load_strategy == "startup_scripts":
-        profile_path = settings.profile_path
-        if not profile_path or not profile_path.exists():
-            raise RuntimeError(
-                f"startup_scripts loading strategy configured but profile path not found: {profile_path}. "
-                f"Set CONFIG_LOAD_STRATEGY=mock for testing, or provide a valid profile path."
-            )
-        from .script_loader import ScriptExecutionLoader
-        logger.info(f"Creating ScriptExecutionLoader from {profile_path}")
-        return ScriptExecutionLoader(profile_path)
-
-    elif load_strategy == "happi":
+    if load_strategy == "happi":
         profile_path = settings.profile_path
         if not profile_path or not profile_path.exists():
             raise RuntimeError(
@@ -620,5 +613,5 @@ def create_loader(settings: "Settings") -> ProfileLoaderType:
     else:
         raise RuntimeError(
             f"Unknown load strategy: {load_strategy}. "
-            f"Valid options: auto, mock, startup_scripts, happi, bits"
+            f"Valid options: auto, empty, mock, happi, bits"
         )

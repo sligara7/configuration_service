@@ -96,9 +96,9 @@ def main() -> None:
     parser.add_argument(
         "--load-strategy",
         type=str,
-        choices=["auto", "startup_scripts", "happi", "bits", "mock"],
+        choices=["auto", "empty", "happi", "bits", "mock"],
         default=os.environ.get("CONFIG_LOAD_STRATEGY", "auto"),
-        help="Loading strategy: auto (detect based on files), startup_scripts (execute startup scripts), happi (LCLS/SLAC JSON), bits (BCDA-APS YAML), or mock. Env: CONFIG_LOAD_STRATEGY",
+        help="Loading strategy: auto (detect based on files), empty (no devices, populated via CRUD), happi (LCLS/SLAC JSON), bits (BCDA-APS YAML), or mock. Env: CONFIG_LOAD_STRATEGY",
     )
     parser.add_argument(
         "--use-mock-data",
