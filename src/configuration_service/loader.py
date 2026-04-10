@@ -539,7 +539,7 @@ def detect_profile_type(profile_path: Path) -> str:
         f"Could not detect profile type for {profile_path}. "
         f"Expected one of: happi_db.json (happi) or devices.yml (bits). "
         f"For profiles with only startup scripts, use the CRUD endpoints "
-        f"to register devices, or set CONFIG_LOAD_STRATEGY=mock."
+        f"to register devices, or set CONFIG_LOAD_STRATEGY=empty."
     )
 
 
@@ -563,8 +563,6 @@ def create_loader(settings: "Settings") -> ProfileLoaderType:
     Raises:
         RuntimeError: If configuration is invalid
     """
-    from .config import Settings
-
     load_strategy = "mock" if settings.use_mock_data else settings.load_strategy
 
     if load_strategy == "empty":

@@ -16,17 +16,16 @@ All settings are read from environment variables with the `CONFIG_` prefix. A `.
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `CONFIG_PROFILE_PATH` | path | — | Path to a beamline profile collection directory |
-| `CONFIG_LOAD_STRATEGY` | str | `auto` | `auto`, `startup_scripts`, `happi`, `bits`, or `mock` |
-| `CONFIG_STARTUP_DIR` | path | — | Override startup script directory (normally derived from `profile_path/startup`) |
+| `CONFIG_LOAD_STRATEGY` | str | `auto` | `auto`, `empty`, `happi`, `bits`, or `mock` |
 
 ### Load strategies
 
 | Value | Description |
 |-------|-------------|
-| `auto` | Detect format from files in `CONFIG_PROFILE_PATH` (happi → bits → startup_scripts) |
+| `auto` | Detect format from files in `CONFIG_PROFILE_PATH` (happi → bits) |
+| `empty` | Start with zero devices. Devices are added via the CRUD API, typically by the Experiment Execution Service (SVC-001) |
 | `happi` | Parse `happi_db.json` |
 | `bits` | Parse `configs/devices.yml` + `configs/iconfig.yml` |
-| `startup_scripts` | Execute Python startup scripts in a subprocess. Requires `pip install .[scripts]` |
 | `mock` | Built-in test data: `sample_x` (motor), `det1` (scaler), `cam1` (area detector) |
 
 ## Persistence

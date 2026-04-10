@@ -33,10 +33,10 @@ class ProfileLoader(Protocol):
     Protocol for profile collection loaders.
 
     Implementations:
-    - ScriptExecutionLoader: Execute startup scripts and introspect namespace
     - HappiProfileLoader: Parse happi_db.json
     - BitsProfileLoader: Parse devices.yml + iconfig.yml
     - MockProfileLoader: Return mock data for testing
+    - EmptyProfileLoader: Start with zero devices (populated via CRUD)
 
     Note: Plans are NOT loaded here. Plan loading is the responsibility
     of Experiment Execution Service (SVC-001).

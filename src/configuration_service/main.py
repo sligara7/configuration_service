@@ -154,10 +154,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Manage application lifecycle - load configuration at startup."""
+        effective_strategy = "mock" if settings.use_mock_data else settings.load_strategy
         logger.info(
             "configuration_service_startup",
             profile_path=str(settings.profile_path),
-            load_strategy=settings.load_strategy,
+            load_strategy=effective_strategy,
         )
 
         if settings.device_change_history_enabled:
@@ -182,7 +183,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 logger.info(
                     "seeded_from_profile",
                     devices=len(registry.devices),
-                    strategy=settings.load_strategy,
+                    strategy=effective_strategy,
                 )
         else:
             # Legacy mode: load from profile every time, no persistence
@@ -191,7 +192,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.info(
                 "loaded_from_profile",
                 devices=len(registry.devices),
-                strategy=settings.load_strategy,
+                strategy=effective_strategy,
             )
 
         # Create state container for dependency injection
@@ -997,33 +998,47 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """
         Update a device's metadata and/or instantiation spec.
 
-        Merges provided fields with existing device data. Omitted fields
-        keep their current values.
+        Supports field-level partial updates: only the fields included
+        in the request body are changed.  Omitted fields keep their
+        current values.
         """
         # Check device exists
-        existing_device = state.registry.get_device(device_name)
-        if existing_device is None:
+        existing_metadata = state.registry.get_device(device_name)
+        if existing_metadata is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Device not found: {device_name}",
             )
 
-        # Validate name in body matches path param
-        if request.metadata and request.metadata.name != device_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Name in body '{request.metadata.name}' does not match path '{device_name}'",
-            )
-        if request.instantiation_spec and request.instantiation_spec.name != device_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Spec name '{request.instantiation_spec.name}' does not match path '{device_name}'",
-            )
+        # Validate name in body matches path param (if provided)
+        if request.metadata and "name" in request.metadata:
+            if request.metadata["name"] != device_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Name in body '{request.metadata['name']}' does not match path '{device_name}'",
+                )
+        if request.instantiation_spec and "name" in request.instantiation_spec:
+            if request.instantiation_spec["name"] != device_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Spec name '{request.instantiation_spec['name']}' does not match path '{device_name}'",
+                )
 
-        # Merge: use provided or fall back to existing
-        merged_metadata = request.metadata if request.metadata else existing_device
+        # Field-level merge: overlay provided fields onto existing data
+        if request.metadata:
+            merged_meta_dict = existing_metadata.model_dump()
+            merged_meta_dict.update(request.metadata)
+            merged_metadata = DeviceMetadata.model_validate(merged_meta_dict)
+        else:
+            merged_metadata = existing_metadata
+
         existing_spec = state.registry.get_instantiation_spec(device_name)
-        merged_spec = request.instantiation_spec if request.instantiation_spec else existing_spec
+        if request.instantiation_spec:
+            merged_spec_dict = existing_spec.model_dump() if existing_spec else {}
+            merged_spec_dict.update(request.instantiation_spec)
+            merged_spec = DeviceInstantiationSpec.model_validate(merged_spec_dict)
+        else:
+            merged_spec = existing_spec
 
         # Update in-memory registry
         state.registry.update_device(merged_metadata, merged_spec)

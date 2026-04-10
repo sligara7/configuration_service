@@ -14,7 +14,6 @@ Detection order (first match wins):
 
 1. `happi_db.json` found → **happi**
 2. `configs/devices.yml` found → **bits**
-3. `startup/*.py` found → **startup_scripts**
 
 ## Happi format (LCLS/SLAC)
 
@@ -81,33 +80,16 @@ Load explicitly:
 CONFIG_PROFILE_PATH=/path/to/profile CONFIG_LOAD_STRATEGY=bits bluesky-configuration-service
 ```
 
-## Startup scripts format (IPython/queueserver)
+## Empty (devices via CRUD API)
 
-Traditional Bluesky profile collections with Python startup scripts. The service executes scripts in a subprocess, introspects the namespace for device objects, and extracts metadata.
-
-Directory structure:
-
-```
-profile/
-└── startup/
-    ├── 00-base.py
-    ├── 01-devices.py
-    └── 02-plans.py
-```
-
-Load explicitly:
+For profiles that use IPython startup scripts, the service starts with an
+empty device registry. Devices are registered at runtime via the CRUD API,
+typically by the Experiment Execution Service (SVC-001) which executes the
+startup scripts and syncs discovered devices.
 
 ```bash
-CONFIG_PROFILE_PATH=/path/to/profile CONFIG_LOAD_STRATEGY=startup_scripts bluesky-configuration-service
+CONFIG_LOAD_STRATEGY=empty bluesky-configuration-service
 ```
-
-This format requires the `scripts` optional dependency:
-
-```bash
-uv sync --extra scripts
-```
-
-Scripts run with `ignore_errors=True`, so individual failures do not crash the service. Devices from successful scripts are still loaded.
 
 ## First run vs. subsequent runs
 

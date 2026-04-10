@@ -470,29 +470,27 @@ class DeviceCreateRequest(BaseModel):
 
 
 class DeviceUpdateRequest(BaseModel):
-    """Request model for updating a device. Both fields are optional for partial updates."""
-    metadata: Optional[DeviceMetadata] = Field(
-        default=None, description="Updated device metadata"
+    """Request model for updating a device.
+
+    Supports true field-level partial updates: only the fields you include
+    in ``metadata`` or ``instantiation_spec`` are changed.  Omitted fields
+    keep their current values.
+    """
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Partial device metadata — only included fields are updated",
     )
-    instantiation_spec: Optional[DeviceInstantiationSpec] = Field(
-        default=None, description="Updated instantiation specification"
+    instantiation_spec: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Partial instantiation spec — only included fields are updated",
     )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "metadata": {
-                    "name": "sample_x",
-                    "device_label": "motor",
-                    "ophyd_class": "EpicsMotor",
-                    "is_movable": True,
-                    "is_readable": True,
-                    "pvs": {
-                        "user_readback": "BL01:SAMPLE:X.RBV",
-                        "user_setpoint": "BL01:SAMPLE:X",
-                    },
-                    "labels": ["motors", "sample-stage"],
                     "documentation": "Sample X translation stage",
+                    "labels": ["motors", "sample-stage"],
                 },
             }
         }

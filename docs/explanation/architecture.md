@@ -15,8 +15,7 @@ src/configuration_service/
 ├── config.py                Pydantic Settings (CONFIG_ env vars)
 ├── protocols.py             Protocol interfaces (ProfileLoader, DeviceRegistryProtocol)
 ├── cli.py                   CLI entry point (argparse + uvicorn)
-├── loader.py                Profile loaders (HappiProfileLoader, BitsProfileLoader, MockProfileLoader)
-├── script_loader.py         Startup script execution in subprocess (ScriptExecutionLoader)
+├── loader.py                Profile loaders (HappiProfileLoader, BitsProfileLoader, MockProfileLoader, EmptyProfileLoader)
 ├── class_capabilities.py    Static lookup table: ophyd class name → capability flags
 ├── device_registry_store.py SQLite persistence for device registry + audit log
 ├── standalone_pv_store.py   SQLite persistence for standalone PVs
@@ -92,12 +91,12 @@ class ProfileLoader(Protocol):
     def load_registry(self) -> DeviceRegistry: ...
 ```
 
+- **EmptyProfileLoader** — starts with zero devices (populated via CRUD API by the EE service)
 - **MockProfileLoader** — returns three hardcoded devices
 - **HappiProfileLoader** — parses `happi_db.json`
 - **BitsProfileLoader** — parses `configs/devices.yml` + `configs/iconfig.yml`
-- **ScriptExecutionLoader** — executes startup scripts in a subprocess, introspects the namespace
 
-The `create_loader(settings)` factory selects the right loader based on `load_strategy`. When `auto`, it calls `detect_profile_type()` which checks for marker files in order: happi → bits → startup_scripts.
+The `create_loader(settings)` factory selects the right loader based on `load_strategy`. When `auto`, it calls `detect_profile_type()` which checks for marker files in order: happi → bits.
 
 Each loader is independent. Removing one is a single class deletion.
 
@@ -130,4 +129,4 @@ FastAPI matches routes in definition order. Several endpoint groups have both fi
 
 ## Class capabilities
 
-`class_capabilities.py` contains a static lookup table mapping ophyd class names to protocol capability flags (`is_movable`, `is_readable`, etc.). The happi and BITS loaders use this instead of importing ophyd — the service does not need ophyd installed unless using the startup_scripts loader.
+`class_capabilities.py` contains a static lookup table mapping ophyd class names to protocol capability flags (`is_movable`, `is_readable`, etc.). The happi and BITS loaders use this instead of importing ophyd — the service does not need ophyd installed.

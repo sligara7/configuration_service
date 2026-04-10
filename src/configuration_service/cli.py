@@ -9,8 +9,6 @@ import argparse
 import os
 import sys
 import uvicorn
-from pathlib import Path
-from typing import Optional
 
 
 def main() -> None:
