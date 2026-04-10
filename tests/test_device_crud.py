@@ -624,6 +624,102 @@ class TestUpdateDeviceEndpoint:
         assert response.status_code == 400
 
 
+class TestPartialUpdateDevice:
+    """Test field-level partial updates via PUT /api/v1/devices/{device_name}."""
+
+    def test_partial_update_documentation_only(self, client):
+        """Sending just documentation preserves all other fields."""
+        # Get original device state
+        original = client.get("/api/v1/devices/sample_x").json()
+        assert original["documentation"] is None
+
+        # Update only documentation
+        response = client.put("/api/v1/devices/sample_x", json={
+            "metadata": {"documentation": "Updated description"}
+        })
+        assert response.status_code == 200
+
+        # Verify documentation changed and everything else preserved
+        updated = client.get("/api/v1/devices/sample_x").json()
+        assert updated["documentation"] == "Updated description"
+        assert updated["name"] == original["name"]
+        assert updated["device_label"] == original["device_label"]
+        assert updated["ophyd_class"] == original["ophyd_class"]
+        assert updated["is_movable"] == original["is_movable"]
+        assert updated["pvs"] == original["pvs"]
+
+    def test_partial_update_labels_only(self, client):
+        """Sending just labels preserves all other fields."""
+        original = client.get("/api/v1/devices/sample_x").json()
+
+        response = client.put("/api/v1/devices/sample_x", json={
+            "metadata": {"labels": ["motors", "sample-stage"]}
+        })
+        assert response.status_code == 200
+
+        updated = client.get("/api/v1/devices/sample_x").json()
+        assert updated["labels"] == ["motors", "sample-stage"]
+        assert updated["ophyd_class"] == original["ophyd_class"]
+        assert updated["pvs"] == original["pvs"]
+
+    def test_partial_update_spec_active_only(self, client):
+        """Sending just active flag on spec preserves device_class/args/kwargs."""
+        original_spec = client.get("/api/v1/devices/sample_x/instantiation").json()
+        assert original_spec["active"] is True
+
+        response = client.put("/api/v1/devices/sample_x", json={
+            "instantiation_spec": {"active": False}
+        })
+        assert response.status_code == 200
+
+        updated_spec = client.get("/api/v1/devices/sample_x/instantiation").json()
+        assert updated_spec["active"] is False
+        assert updated_spec["device_class"] == original_spec["device_class"]
+        assert updated_spec["args"] == original_spec["args"]
+        assert updated_spec["kwargs"] == original_spec["kwargs"]
+
+        # Restore
+        client.put("/api/v1/devices/sample_x", json={
+            "instantiation_spec": {"active": True}
+        })
+
+    def test_partial_update_invalid_device_label(self, client):
+        """Invalid enum value in partial update returns 422."""
+        response = client.put("/api/v1/devices/sample_x", json={
+            "metadata": {"device_label": "not_a_real_label"}
+        })
+        assert response.status_code == 422
+
+    def test_partial_update_multiple_fields(self, client):
+        """Multiple fields in one request all apply."""
+        response = client.put("/api/v1/devices/sample_x", json={
+            "metadata": {
+                "documentation": "Multi-field update",
+                "is_stoppable": True,
+                "labels": ["updated"],
+            }
+        })
+        assert response.status_code == 200
+
+        updated = client.get("/api/v1/devices/sample_x").json()
+        assert updated["documentation"] == "Multi-field update"
+        assert updated["is_stoppable"] is True
+        assert updated["labels"] == ["updated"]
+        # Required fields preserved
+        assert updated["name"] == "sample_x"
+        assert updated["ophyd_class"] == "EpicsMotor"
+
+    def test_partial_update_empty_body(self, client):
+        """Empty metadata/spec body is a no-op, not an error."""
+        original = client.get("/api/v1/devices/sample_x").json()
+
+        response = client.put("/api/v1/devices/sample_x", json={})
+        assert response.status_code == 200
+
+        unchanged = client.get("/api/v1/devices/sample_x").json()
+        assert unchanged == original
+
+
 class TestDeleteDeviceEndpoint:
     """Test DELETE /api/v1/devices/{device_name}."""
 

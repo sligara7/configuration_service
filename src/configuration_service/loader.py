@@ -563,7 +563,7 @@ def create_loader(settings: "Settings") -> ProfileLoaderType:
     Raises:
         RuntimeError: If configuration is invalid
     """
-    load_strategy = "mock" if settings.use_mock_data else settings.load_strategy
+    load_strategy = settings.effective_strategy
 
     if load_strategy == "empty":
         logger.info("Creating EmptyProfileLoader (devices will be added via CRUD)")

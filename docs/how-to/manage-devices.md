@@ -32,29 +32,31 @@ Returns `201 Created`. Returns `409` if the name already exists.
 
 ## Update a device
 
-PUT replaces metadata, instantiation spec, or both. Omitted fields keep their current values.
+PUT supports field-level partial updates. Only the fields you include are
+changed — omitted fields keep their current values.
 
 ```bash
+# Update just the documentation and labels
 curl -X PUT http://localhost:8004/api/v1/devices/my_motor \
   -H "Content-Type: application/json" \
   -d '{
     "metadata": {
-      "name": "my_motor",
-      "device_label": "motor",
-      "ophyd_class": "EpicsMotor",
-      "is_movable": true,
-      "is_readable": true,
-      "pvs": {
-        "user_readback": "BL:MOT.RBV",
-        "user_setpoint": "BL:MOT",
-        "velocity": "BL:MOT.VELO"
-      },
+      "documentation": "Sample X translation stage",
       "labels": ["motors", "sample-stage"]
+    }
+  }'
+
+# Update just the instantiation spec's active flag
+curl -X PUT http://localhost:8004/api/v1/devices/my_motor \
+  -H "Content-Type: application/json" \
+  -d '{
+    "instantiation_spec": {
+      "active": false
     }
   }'
 ```
 
-The `name` in the body must match the path parameter.
+If `name` is included in the body, it must match the path parameter.
 
 ## Delete a device
 

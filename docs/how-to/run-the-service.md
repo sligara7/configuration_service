@@ -16,7 +16,7 @@ CONFIG_LOAD_STRATEGY=mock bluesky-configuration-service
 
 ## With a profile collection
 
-Point to a profile directory. The service auto-detects the format (happi, BITS, or startup scripts).
+Point to a profile directory. The service auto-detects the format (happi or BITS).
 
 ```bash
 CONFIG_PROFILE_PATH=/path/to/profile bluesky-configuration-service

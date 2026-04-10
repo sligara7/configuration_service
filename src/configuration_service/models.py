@@ -469,18 +469,62 @@ class DeviceCreateRequest(BaseModel):
         }
 
 
+class DeviceMetadataUpdate(BaseModel):
+    """Partial update model for DeviceMetadata.
+
+    All fields are optional.  Only fields included in the request body
+    are applied; omitted fields keep their current values.  Use with
+    ``model_dump(exclude_unset=True)`` to distinguish "not sent" from
+    "sent as None/default".
+    """
+    name: Optional[str] = Field(default=None, description="Device name")
+    device_label: Optional[DeviceLabel] = Field(default=None, description="Classification of device")
+    ophyd_class: Optional[str] = Field(default=None, description="Ophyd device class name")
+    module: Optional[str] = Field(default=None, description="Python module containing the device class")
+    is_movable: Optional[bool] = Field(default=None, description="Implements Movable protocol")
+    is_flyable: Optional[bool] = Field(default=None, description="Implements Flyable protocol")
+    is_readable: Optional[bool] = Field(default=None, description="Implements Readable protocol")
+    is_triggerable: Optional[bool] = Field(default=None, description="Implements Triggerable protocol")
+    is_stageable: Optional[bool] = Field(default=None, description="Implements Stageable protocol")
+    is_configurable: Optional[bool] = Field(default=None, description="Implements Configurable protocol")
+    is_pausable: Optional[bool] = Field(default=None, description="Implements Pausable protocol")
+    is_stoppable: Optional[bool] = Field(default=None, description="Implements Stoppable protocol")
+    is_subscribable: Optional[bool] = Field(default=None, description="Implements Subscribable protocol")
+    is_checkable: Optional[bool] = Field(default=None, description="Implements Checkable protocol")
+    writes_external_assets: Optional[bool] = Field(default=None, description="Writes external assets")
+    pvs: Optional[Dict[str, str]] = Field(default=None, description="Component name to PV mapping")
+    hints: Optional[Dict[str, Any]] = Field(default=None, description="Bluesky hints for plotting/display")
+    read_attrs: Optional[List[str]] = Field(default=None, description="Readable attributes")
+    configuration_attrs: Optional[List[str]] = Field(default=None, description="Configuration attributes")
+    parent: Optional[str] = Field(default=None, description="Parent device if this is a component")
+    labels: Optional[List[str]] = Field(default=None, description="Device labels for grouping")
+    beamline: Optional[str] = Field(default=None, description="Beamline identifier")
+    location_group: Optional[str] = Field(default=None, description="Location grouping")
+    functional_group: Optional[str] = Field(default=None, description="Functional grouping")
+    documentation: Optional[str] = Field(default=None, description="Device documentation/description")
+
+
+class DeviceInstantiationSpecUpdate(BaseModel):
+    """Partial update model for DeviceInstantiationSpec."""
+    name: Optional[str] = Field(default=None, description="Device name")
+    device_class: Optional[str] = Field(default=None, description="Fully qualified class path")
+    args: Optional[List[Any]] = Field(default=None, description="Positional constructor arguments")
+    kwargs: Optional[Dict[str, Any]] = Field(default=None, description="Keyword constructor arguments")
+    active: Optional[bool] = Field(default=None, description="Whether this device should be instantiated")
+
+
 class DeviceUpdateRequest(BaseModel):
     """Request model for updating a device.
 
-    Supports true field-level partial updates: only the fields you include
+    Supports field-level partial updates: only the fields you include
     in ``metadata`` or ``instantiation_spec`` are changed.  Omitted fields
     keep their current values.
     """
-    metadata: Optional[Dict[str, Any]] = Field(
+    metadata: Optional[DeviceMetadataUpdate] = Field(
         default=None,
         description="Partial device metadata — only included fields are updated",
     )
-    instantiation_spec: Optional[Dict[str, Any]] = Field(
+    instantiation_spec: Optional[DeviceInstantiationSpecUpdate] = Field(
         default=None,
         description="Partial instantiation spec — only included fields are updated",
     )
@@ -563,7 +607,11 @@ class StandalonePVCreateRequest(BaseModel):
 
 
 class StandalonePVUpdateRequest(BaseModel):
-    """Request model for updating a standalone PV. All fields optional for partial update."""
+    """Request model for updating a standalone PV.
+
+    All fields optional.  Only fields included in the request body are
+    applied; omitted fields keep their current values.
+    """
     description: Optional[str] = Field(default=None, description="Human-readable description")
     protocol: Optional[PVProtocol] = Field(default=None, description="EPICS protocol")
     access_mode: Optional[PVAccessMode] = Field(default=None, description="Access mode")

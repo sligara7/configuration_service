@@ -18,6 +18,7 @@ Architecture:
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Query, status
+from pydantic import ValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Dict, Any, Annotated
@@ -154,11 +155,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Manage application lifecycle - load configuration at startup."""
-        effective_strategy = "mock" if settings.use_mock_data else settings.load_strategy
         logger.info(
             "configuration_service_startup",
             profile_path=str(settings.profile_path),
-            load_strategy=effective_strategy,
+            load_strategy=settings.effective_strategy,
         )
 
         if settings.device_change_history_enabled:
@@ -183,7 +183,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 logger.info(
                     "seeded_from_profile",
                     devices=len(registry.devices),
-                    strategy=effective_strategy,
+                    strategy=settings.effective_strategy,
                 )
         else:
             # Legacy mode: load from profile every time, no persistence
@@ -192,7 +192,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             logger.info(
                 "loaded_from_profile",
                 devices=len(registry.devices),
-                strategy=effective_strategy,
+                strategy=settings.effective_strategy,
             )
 
         # Create state container for dependency injection
@@ -1011,32 +1011,46 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
 
         # Validate name in body matches path param (if provided)
-        if request.metadata and "name" in request.metadata:
-            if request.metadata["name"] != device_name:
+        if request.metadata and request.metadata.name is not None:
+            if request.metadata.name != device_name:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Name in body '{request.metadata['name']}' does not match path '{device_name}'",
+                    detail=f"Name in body '{request.metadata.name}' does not match path '{device_name}'",
                 )
-        if request.instantiation_spec and "name" in request.instantiation_spec:
-            if request.instantiation_spec["name"] != device_name:
+        if request.instantiation_spec and request.instantiation_spec.name is not None:
+            if request.instantiation_spec.name != device_name:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Spec name '{request.instantiation_spec['name']}' does not match path '{device_name}'",
+                    detail=f"Spec name '{request.instantiation_spec.name}' does not match path '{device_name}'",
                 )
 
-        # Field-level merge: overlay provided fields onto existing data
+        # Field-level merge: overlay only the fields the caller sent
         if request.metadata:
+            updates = request.metadata.model_dump(exclude_unset=True)
             merged_meta_dict = existing_metadata.model_dump()
-            merged_meta_dict.update(request.metadata)
-            merged_metadata = DeviceMetadata.model_validate(merged_meta_dict)
+            merged_meta_dict.update(updates)
+            try:
+                merged_metadata = DeviceMetadata.model_validate(merged_meta_dict)
+            except ValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid metadata update: {exc}",
+                )
         else:
             merged_metadata = existing_metadata
 
         existing_spec = state.registry.get_instantiation_spec(device_name)
         if request.instantiation_spec:
+            updates = request.instantiation_spec.model_dump(exclude_unset=True)
             merged_spec_dict = existing_spec.model_dump() if existing_spec else {}
-            merged_spec_dict.update(request.instantiation_spec)
-            merged_spec = DeviceInstantiationSpec.model_validate(merged_spec_dict)
+            merged_spec_dict.update(updates)
+            try:
+                merged_spec = DeviceInstantiationSpec.model_validate(merged_spec_dict)
+            except ValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid instantiation spec update: {exc}",
+                )
         else:
             merged_spec = existing_spec
 
@@ -1284,7 +1298,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """
         Update a standalone PV's metadata.
 
-        Merges provided fields with existing values. Returns 404 if not found.
+        Supports field-level partial updates. Returns 404 if not found.
         """
         existing = pv_store.get_pv(pv_name)
         if existing is None:
@@ -1293,15 +1307,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 detail=f"Standalone PV not found: {pv_name}",
             )
 
-        # Merge fields
-        pv_store.save_pv(
-            pv_name=pv_name,
-            description=request.description if request.description is not None else existing.description,
-            protocol=(request.protocol.value if request.protocol is not None else existing.protocol),
-            access_mode=(request.access_mode.value if request.access_mode is not None else existing.access_mode),
-            labels=request.labels if request.labels is not None else existing.labels,
-            source=existing.source,
-        )
+        # Merge only the fields the caller sent
+        updates = request.model_dump(mode="json", exclude_unset=True)
+        merged = {
+            "description": existing.description,
+            "protocol": existing.protocol,
+            "access_mode": existing.access_mode,
+            "labels": existing.labels,
+            "source": existing.source,
+        }
+        merged.update(updates)
+
+        pv_store.save_pv(pv_name=pv_name, **merged)
 
         logger.info("standalone_pv_updated", pv_name=pv_name)
 

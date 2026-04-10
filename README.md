@@ -34,7 +34,7 @@ uv run pytest tests/
 | [Manage Devices](docs/how-to/manage-devices.md) | Create, update, delete, enable/disable devices at runtime |
 | [Manage PVs](docs/how-to/manage-pvs.md) | Register standalone PVs not tied to ophyd devices |
 | [Manage Metadata](docs/how-to/manage-metadata.md) | Store and retrieve arbitrary JSON metadata for sharing between services |
-| [Load Profiles](docs/how-to/load-profiles.md) | Load from happi, BITS, or startup script profile formats |
+| [Load Profiles](docs/how-to/load-profiles.md) | Load from happi or BITS profiles, or start empty for CRUD-based registration |
 | [API Reference](docs/reference/api.md) | Complete endpoint listing with methods, paths, and descriptions |
 | [Configuration Reference](docs/reference/configuration.md) | All `CONFIG_` environment variables |
 | [Data Models](docs/reference/models.md) | DeviceMetadata, DeviceInstantiationSpec, PVMetadata, and related types |

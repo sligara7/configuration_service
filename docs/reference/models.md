@@ -131,7 +131,7 @@ A stored metadata key-value entry.
 
 **DeviceCreateRequest**: `{metadata: DeviceMetadata, instantiation_spec: DeviceInstantiationSpec}`
 
-**DeviceUpdateRequest**: `{metadata?: DeviceMetadata, instantiation_spec?: DeviceInstantiationSpec}`
+**DeviceUpdateRequest**: `{metadata?: dict[str, Any], instantiation_spec?: dict[str, Any]}` — field-level partial update; only included fields are changed, omitted fields keep existing values
 
 **DeviceCRUDResponse**: `{success: bool, device_name: str, operation: str, message: str}`
 

@@ -75,3 +75,8 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    @property
+    def effective_strategy(self) -> str:
+        """Resolved load strategy, accounting for the use_mock_data shortcut."""
+        return "mock" if self.use_mock_data else self.load_strategy
+
