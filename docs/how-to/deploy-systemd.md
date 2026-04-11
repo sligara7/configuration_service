@@ -417,3 +417,208 @@ curl -s http://localhost:8004/api/v1/devices-info | python3 -m json.tool
 |------|---------|
 | **8001** | Main HTTP API |
 | **9001** | Prometheus metrics (if enabled) |
+
+---
+
+## Deploying the Direct Control Service (SVC-003)
+
+The Direct Control Service provides low-fidelity (caget/caput) and
+high-fidelity (ophyd) channels for direct EPICS device control.
+
+### 1. Copy the source
+
+```bash
+mkdir -p /opt/bs_dc_svc
+rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='.git' \
+    /path/to/bluesky-direct-control-service/ \
+    root@<target-host>:/opt/bs_dc_svc/
+```
+
+### 2. Create venv and install
+
+Same pixi `--system-site-packages` approach as the EE service:
+
+```bash
+/opt/bluesky/profile_collection/.pixi/envs/qs/bin/python \
+    -m venv --system-site-packages /opt/bs_dc_svc/.venv
+/opt/bs_dc_svc/.venv/bin/pip install -e /opt/bs_dc_svc/
+```
+
+Install structlog if missing:
+
+```bash
+/opt/bs_dc_svc/.venv/bin/pip install \
+    --force-reinstall --no-deps structlog \
+    -t /opt/bs_dc_svc/.venv/lib/python3.12/site-packages/
+```
+
+### 3. Create environment file
+
+```bash
+cat > /opt/bs_dc_svc/.env << 'EOF'
+DIRECT_CONTROL_HOST=0.0.0.0
+DIRECT_CONTROL_PORT=8003
+DIRECT_CONTROL_LOG_LEVEL=info
+DIRECT_CONTROL_CONFIGURATION_SERVICE_URL=http://localhost:8004
+DIRECT_CONTROL_EXPERIMENT_EXECUTION_URL=http://localhost:8001
+DIRECT_CONTROL_REQUIRE_AUTH=false
+DIRECT_CONTROL_COORDINATION_CHECK_ENABLED=true
+DIRECT_CONTROL_EPICS_CA_AUTO_ADDR_LIST=true
+DIRECT_CONTROL_COMMAND_TIMEOUT=30.0
+DIRECT_CONTROL_ENABLE_METRICS=true
+DIRECT_CONTROL_METRICS_PORT=9003
+EOF
+```
+
+### 4. Create systemd unit
+
+```ini
+[Unit]
+Description=Bluesky Direct Device Control Service (SVC-003)
+Requires=network.target
+After=network.target bluesky-configuration-service.service
+
+[Service]
+Type=simple
+User=xf31id
+Group=xf31id
+WorkingDirectory=/opt/bs_dc_svc
+EnvironmentFile=/opt/bs_dc_svc/.env
+ExecStart=/opt/bs_dc_svc/.venv/bin/bluesky-direct-control \
+    --host ${DIRECT_CONTROL_HOST} \
+    --port ${DIRECT_CONTROL_PORT} \
+    --log-level ${DIRECT_CONTROL_LOG_LEVEL} \
+    --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 5. Enable and start
+
+```bash
+chown -R xf31id:xf31id /opt/bs_dc_svc
+systemctl daemon-reload
+systemctl enable bluesky-direct-control.service
+systemctl start bluesky-direct-control.service
+```
+
+### 6. Test with real EPICS PVs
+
+Register PVs in the config service, then read/write via direct control:
+
+```bash
+# Register a PV
+curl -X POST http://localhost:8004/api/v1/pvs \
+  -H "Content-Type: application/json" \
+  -d '{"pv_name": "XF:31ID1-ES{SIM-Cam:2}cam1:GainX", "labels": ["tst"]}'
+
+# Read via direct control
+curl http://localhost:8003/api/v1/pv/XF:31ID1-ES%7BSIM-Cam:2%7Dcam1:GainX/value
+
+# Write via direct control (checks A4 locks first)
+curl -X POST http://localhost:8003/api/v1/pv/set \
+  -H "Content-Type: application/json" \
+  -d '{"pv_name": "XF:31ID1-ES{SIM-Cam:2}cam1:GainX", "value": 2.5}'
+```
+
+### DC service ports
+
+| Port | Purpose |
+|------|---------|
+| **8003** | Main HTTP API |
+| **9003** | Prometheus metrics (if enabled) |
+
+---
+
+## Tiled SimpleTiledServer Fix
+
+The profile collection's `00-startup.py` creates a `SimpleTiledServer`.
+In tiled <= 0.2.9, there is a race condition where `from_uri()` is called
+before the server's FastAPI lifespan completes, causing 500 errors and
+retries that appear as a hang.
+
+### Fix
+
+Patch `tiled/server/simple.py` to poll the server's metadata endpoint
+until it returns 200 before the `SimpleTiledServer` constructor returns.
+A patched copy is saved at `/opt/bs_ee_svc/tiled_simple_fix.py`.
+
+To apply:
+
+```bash
+TILED_SIMPLE=$(python -c "import tiled.server.simple; print(tiled.server.simple.__file__)")
+cp /opt/bs_ee_svc/tiled_simple_fix.py "$TILED_SIMPLE"
+```
+
+Key changes:
+- Add trailing slash to health check URL (`/api/v1/` not `/api/v1`) to
+  avoid 307 redirect loop
+- Add `follow_redirects=True` as safety net
+- Poll until 200 OK before returning from `__init__`
+
+### Upgrading pixi packages
+
+To get the latest tiled/bluesky/ophyd-async, copy the pixi.toml and
+loosen version pins:
+
+```bash
+cp /opt/bluesky/profile_collection/pixi.toml /opt/bs_ee_svc/pixi.toml
+# Edit pixi.toml: change pinned versions (==X.Y.Z) to wildcards (*)
+pixi install --environment qs
+```
+
+---
+
+## Testing blop Bayesian Optimization over HTTP
+
+blop is a client library (not a service) that uses Ax/BoTorch for
+Bayesian optimization. It can talk to the EE service over HTTP.
+
+### 1. Install blop
+
+```bash
+mkdir -p /opt/blop
+rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='.git' \
+    /path/to/blop/ root@<target-host>:/opt/blop/
+
+# Create venv with uv-managed Python (avoids pixi library conflicts)
+UV_PYTHON_INSTALL_DIR=/opt/blop/.python /root/.local/bin/uv venv \
+    --python 3.12 /opt/blop/.venv
+
+# Install CPU-only PyTorch + blop
+export SETUPTOOLS_SCM_PRETEND_VERSION=0.1.0
+UV_PYTHON_INSTALL_DIR=/opt/blop/.python /root/.local/bin/uv pip install \
+    --python /opt/blop/.venv/bin/python \
+    --index-url https://download.pytorch.org/whl/cpu torch
+UV_PYTHON_INSTALL_DIR=/opt/blop/.python /root/.local/bin/uv pip install \
+    --python /opt/blop/.venv/bin/python -e "/opt/blop[qs]" httpx
+```
+
+### 2. Run optimization
+
+```python
+from blop.queueserver import create_http_client
+client = create_http_client("http://localhost:8001", use_ee_service=True)
+client.check_environment()
+```
+
+Or use `HTTPManagerAPI` directly with `AxOptimizer` for a full
+Bayesian optimization loop (see test script at `/tmp/test_blop_optimize.py`
+on the target).
+
+---
+
+## Service Summary
+
+| Service | Port | Metrics | Directory | systemd unit |
+|---------|------|---------|-----------|-------------|
+| Configuration (SVC-004) | 8004 | 9004 | `/opt/bs_config_svc/` | `bluesky-configuration-service` |
+| Experiment Execution (SVC-001) | 8001 | 9001 | `/opt/bs_ee_svc/` | `bluesky-experiment-execution` |
+| Direct Control (SVC-003) | 8003 | 9003 | `/opt/bs_dc_svc/` | `bluesky-direct-control` |
+| blop (client library) | — | — | `/opt/blop/` | — |
