@@ -855,15 +855,21 @@ class TestEnableDisableEndpoint:
         assert specs["new_motor"]["active"] is False
 
     def test_disable_persists_to_audit_log(self, client, sample_device_payload):
-        """Test that enable/disable operations appear in audit log."""
+        """Test that enable/disable operations appear in audit log with details."""
         client.post("/api/v1/devices", json=sample_device_payload)
         client.patch("/api/v1/devices/new_motor/disable")
 
         entries = client.get("/api/v1/devices/history?device_name=new_motor").json()
-        # Should have "add" and "update" (from disable)
         operations = [e["operation"] for e in entries]
         assert "add" in operations
-        assert "update" in operations
+        assert "disable" in operations
+
+        # Verify details are recorded
+        disable_entry = next(e for e in entries if e["operation"] == "disable")
+        assert disable_entry["details"] is not None
+        details = json.loads(disable_entry["details"])
+        assert details["field"] == "active"
+        assert details["new"] is False
 
     def test_disable_seeded_device(self, client):
         """Test disabling a profile-seeded device works correctly."""

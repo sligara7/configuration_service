@@ -791,7 +791,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             name=device_name,
             metadata=existing,
             spec=spec,
-            operation="update",
+            operation="enable",
+            details={"field": "active", "old": False, "new": True},
         )
 
         logger.info("device_enabled", device_name=device_name)
@@ -850,7 +851,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             name=device_name,
             metadata=existing,
             spec=spec,
-            operation="update",
+            operation="disable",
+            details={"field": "active", "old": True, "new": False},
         )
 
         logger.info("device_disabled", device_name=device_name)
@@ -998,6 +1000,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             metadata=request.metadata,
             spec=request.instantiation_spec,
             operation="add",
+            details={
+                "device_label": request.metadata.device_label,
+                "ophyd_class": request.metadata.ophyd_class,
+            },
         )
 
         logger.info("device_created", device_name=device_name)
@@ -1078,6 +1084,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         else:
             merged_spec = existing_spec
 
+        # Track what changed for audit details
+        changed_fields = []
+        if request.metadata:
+            changed_fields.extend(list(request.metadata.model_dump(exclude_unset=True).keys()))
+        if request.instantiation_spec:
+            changed_fields.extend([
+                f"spec.{k}" for k in request.instantiation_spec.model_dump(exclude_unset=True).keys()
+            ])
+
         # Update in-memory registry
         state.registry.update_device(merged_metadata, merged_spec)
 
@@ -1087,6 +1102,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             metadata=merged_metadata,
             spec=merged_spec,
             operation="update",
+            details={"changed_fields": changed_fields} if changed_fields else None,
         )
 
         logger.info("device_updated", device_name=device_name)
@@ -1128,7 +1144,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         state.registry.remove_device(device_name)
 
         # Remove from DB (also appends audit log entry)
-        registry_store.delete_device(device_name)
+        registry_store.delete_device(
+            device_name,
+            details={
+                "ophyd_class": existing_device.ophyd_class,
+                "device_label": existing_device.device_label,
+            },
+        )
 
         logger.info("device_deleted", device_name=device_name)
 

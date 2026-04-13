@@ -189,6 +189,7 @@ class DeviceRegistryStore:
         metadata: DeviceMetadata,
         spec: Optional[DeviceInstantiationSpec] = None,
         operation: str = "add",
+        details: Optional[dict] = None,
     ) -> None:
         """
         Save or update a device in the registry.
@@ -202,7 +203,9 @@ class DeviceRegistryStore:
         spec : DeviceInstantiationSpec, optional
             Instantiation spec
         operation : str
-            Audit log operation (add or update)
+            Audit log operation (add, update, enable, disable)
+        details : dict, optional
+            Details about what changed (serialized to JSON for storage)
         """
         now = time.time()
         metadata_json = metadata.model_dump_json()
@@ -233,17 +236,18 @@ class DeviceRegistryStore:
                     (name, metadata_json, spec_json, now, now),
                 )
 
+            details_json = json.dumps(details) if details else None
             conn.execute(
                 """
-                INSERT INTO device_audit_log (device_name, operation, timestamp)
-                VALUES (?, ?, ?)
+                INSERT INTO device_audit_log (device_name, operation, timestamp, details)
+                VALUES (?, ?, ?, ?)
                 """,
-                (name, operation, now),
+                (name, operation, now, details_json),
             )
 
         logger.debug(f"Saved device: {name} (operation={operation})")
 
-    def delete_device(self, name: str) -> bool:
+    def delete_device(self, name: str, details: Optional[dict] = None) -> bool:
         """
         Delete a device from the registry.
 
@@ -258,12 +262,13 @@ class DeviceRegistryStore:
             deleted = cursor.rowcount > 0
 
             if deleted:
+                details_json = json.dumps(details) if details else None
                 conn.execute(
                     """
-                    INSERT INTO device_audit_log (device_name, operation, timestamp)
-                    VALUES (?, 'delete', ?)
+                    INSERT INTO device_audit_log (device_name, operation, timestamp, details)
+                    VALUES (?, 'delete', ?, ?)
                     """,
-                    (name, now),
+                    (name, now, details_json),
                 )
 
         if deleted:
