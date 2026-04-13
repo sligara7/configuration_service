@@ -27,6 +27,7 @@ import json
 from .models import (
     DeviceMetadata,
     DeviceInstantiationSpec,
+    DeviceRegistry,
     PVMetadata,
     DeviceLabel,
     NestedDeviceComponent,
@@ -1182,6 +1183,43 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             device_name="*",
             operation="reset",
             message=f"Registry reset and re-seeded with {len(registry.devices)} devices from profile",
+        )
+
+    @app.post(
+        "/api/v1/registry/clear",
+        response_model=DeviceCRUDResponse,
+        summary="Clear Registry",
+        description="Wipe all devices without re-seeding. The next restart will re-seed from the profile.",
+        tags=["Registry Admin"],
+    )
+    async def clear_registry(
+        state: StateDep,
+        registry_store: RegistryStoreDep,
+    ) -> DeviceCRUDResponse:
+        """
+        Clear the device registry to empty.
+
+        Unlike reset, this does NOT re-seed from the profile collection.
+        The registry remains empty until devices are added via CRUD,
+        the EE service syncs, or the service is restarted.
+        """
+        empty_registry = DeviceRegistry()
+
+        registry_store.clear_and_reseed(empty_registry)
+
+        # Re-apply standalone PVs (they are preserved)
+        if "store" in standalone_pv_container:
+            _apply_standalone_pvs(empty_registry, standalone_pv_container["store"], logger)
+
+        state_container["state"] = ConfigurationState(registry=empty_registry)
+
+        logger.info("registry_cleared")
+
+        return DeviceCRUDResponse(
+            success=True,
+            device_name="*",
+            operation="clear",
+            message="Registry cleared. 0 devices. Use CRUD or EE sync to populate.",
         )
 
     @app.get(

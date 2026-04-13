@@ -45,6 +45,7 @@ Interactive documentation: `http://localhost:8004/docs` (Swagger UI)
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/v1/registry/reset` | Wipe DB and re-seed from profile. Preserves standalone PVs |
+| POST | `/api/v1/registry/clear` | Wipe DB to empty without re-seeding. Preserves standalone PVs |
 | GET | `/api/v1/registry/export` | Export in happi format. Query param: `format` (only `happi` supported) |
 
 ## PV Registry
