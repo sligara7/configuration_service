@@ -451,6 +451,114 @@ class DeviceRegistryStore:
         cursor = conn.execute("SELECT COUNT(*) FROM device_registry")
         return cursor.fetchone()[0]
 
+    # Operations exposed in the /changes feed. Lock/unlock/force_unlock don't
+    # modify device state and are deliberately omitted. 'reset' is surfaced
+    # through the reset_occurred flag, not as a per-device change.
+    _CHANGE_FEED_OPS = ("seed", "add", "update", "delete", "enable", "disable")
+
+    def get_changes_since(self, since_version: int) -> Dict[str, Any]:
+        """
+        Return device-level state deltas after ``since_version``.
+
+        The result is deduped per device: only the latest operation per
+        device within the range is reported, along with the device's current
+        state (or a 'delete' marker if it no longer exists).
+
+        Returns a dict with keys: ``current_version`` (int), ``service_epoch``
+        (str), ``reset_occurred`` (bool), ``changes`` (list of dicts with
+        keys ``device_name``, ``op``, ``version``, ``metadata``, ``spec``).
+        """
+        conn = self._get_connection()
+
+        row = conn.execute("SELECT COALESCE(MAX(id), 0) AS v FROM device_audit_log").fetchone()
+        current_version = int(row["v"])
+
+        row = conn.execute(
+            "SELECT value FROM registry_metadata WHERE key = 'seeded'"
+        ).fetchone()
+        service_epoch = row["value"] if row else "unseeded"
+
+        if since_version >= current_version:
+            return {
+                "current_version": current_version,
+                "service_epoch": service_epoch,
+                "reset_occurred": False,
+                "changes": [],
+            }
+
+        reset_row = conn.execute(
+            "SELECT 1 FROM device_audit_log WHERE id > ? AND operation = 'reset' LIMIT 1",
+            (since_version,),
+        ).fetchone()
+        reset_occurred = reset_row is not None
+
+        placeholders = ",".join("?" * len(self._CHANGE_FEED_OPS))
+        cursor = conn.execute(
+            f"""
+            SELECT device_name, MAX(id) AS latest_id, operation
+            FROM device_audit_log
+            WHERE id > ?
+              AND operation IN ({placeholders})
+              AND device_name != '*'
+            GROUP BY device_name
+            """,
+            (since_version, *self._CHANGE_FEED_OPS),
+        )
+        per_device = [
+            (r["device_name"], int(r["latest_id"]))
+            for r in cursor.fetchall()
+        ]
+
+        changes: List[Dict[str, Any]] = []
+        for device_name, latest_id in per_device:
+            op_row = conn.execute(
+                "SELECT operation FROM device_audit_log WHERE id = ?", (latest_id,)
+            ).fetchone()
+            latest_op = op_row["operation"] if op_row else "delete"
+
+            if latest_op == "delete":
+                changes.append(
+                    {
+                        "device_name": device_name,
+                        "op": "delete",
+                        "version": latest_id,
+                        "metadata": None,
+                        "spec": None,
+                    }
+                )
+                continue
+
+            device = self.get_device(device_name)
+            if device is None:
+                changes.append(
+                    {
+                        "device_name": device_name,
+                        "op": "delete",
+                        "version": latest_id,
+                        "metadata": None,
+                        "spec": None,
+                    }
+                )
+            else:
+                changes.append(
+                    {
+                        "device_name": device_name,
+                        "op": "upsert",
+                        "version": latest_id,
+                        "metadata": device["metadata"],
+                        "spec": device["spec"],
+                    }
+                )
+
+        changes.sort(key=lambda c: c["version"])
+
+        return {
+            "current_version": current_version,
+            "service_epoch": service_epoch,
+            "reset_occurred": reset_occurred,
+            "changes": changes,
+        }
+
     def close(self) -> None:
         """Close database connection."""
         if hasattr(self._local, "conn") and self._local.conn:

@@ -35,6 +35,7 @@ from .models import (
     DeviceUpdateRequest,
     DeviceCRUDResponse,
     DeviceAuditEntry,
+    DeviceChangesResponse,
     DeviceLockRequest,
     DeviceLockResponse,
     DeviceLockConflict,
@@ -513,6 +514,30 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         update, delete, reset). Use device_name to filter to a specific device.
         """
         return registry_store.get_audit_log(device_name=device_name, limit=limit)
+
+    @app.get(
+        "/api/v1/devices/changes",
+        response_model=DeviceChangesResponse,
+        summary="Device Registry Delta",
+        description=(
+            "Return device-state changes after a given audit cursor. Intended "
+            "for clients (like bluesky-queueserver) that cache device state "
+            "and need to keep it fresh without re-fetching the full registry. "
+            "Each device is reported at most once with its current state. If "
+            "reset_occurred is true, the caller should discard local state "
+            "and re-fetch /devices-info; likewise if service_epoch differs "
+            "from a previously-observed value."
+        ),
+        tags=["Device Management"],
+    )
+    async def get_device_changes(
+        registry_store: RegistryStoreDep,
+        since_version: int = Query(
+            0, ge=0, description="Return changes with audit id greater than this value"
+        ),
+    ) -> DeviceChangesResponse:
+        result = registry_store.get_changes_since(since_version=since_version)
+        return DeviceChangesResponse(**result)
 
     # ===== Device Locking Endpoints =====
     # NOTE: These must be defined BEFORE /api/v1/devices/{device_name}

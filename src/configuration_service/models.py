@@ -538,6 +538,38 @@ class DeviceAuditEntry(BaseModel):
     details: Optional[str] = Field(default=None, description="Optional JSON details")
 
 
+class DeviceChangeEntry(BaseModel):
+    """
+    One device's current state, reported in a delta response.
+
+    ``op`` is "upsert" if the device currently exists (create or update), or
+    "delete" if it no longer exists. For "upsert", ``metadata`` and ``spec``
+    reflect the current state; for "delete" both are null.
+    """
+    device_name: str = Field(description="Device name")
+    op: str = Field(description="Either 'upsert' or 'delete'")
+    version: int = Field(description="Audit log id of the change that produced this state")
+    metadata: Optional[DeviceMetadata] = Field(default=None)
+    spec: Optional[DeviceInstantiationSpec] = Field(default=None)
+
+
+class DeviceChangesResponse(BaseModel):
+    """
+    Delta response: every device whose state changed after ``since_version``.
+
+    If ``reset_occurred`` is true, a registry-wide reset happened in the
+    requested range and the caller should discard its local state and
+    re-fetch the full registry instead of applying ``changes`` incrementally.
+    ``service_epoch`` is a stable identifier that changes only on manual
+    re-seed or DB wipe; if it differs from the value the caller saw last,
+    treat the cursor as invalid.
+    """
+    current_version: int = Field(description="Latest audit log id at query time")
+    service_epoch: str = Field(description="Stable service-instance identifier")
+    reset_occurred: bool = Field(description="True if a registry-wide reset happened in the range")
+    changes: List[DeviceChangeEntry] = Field(default_factory=list)
+
+
 # ===== Nested Device Models =====
 
 # ===== Standalone PV Models =====
