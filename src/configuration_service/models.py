@@ -4,7 +4,7 @@ Domain models for Configuration Service (SVC-004).
 These models represent the core entities for the device/PV registry.
 """
 
-from typing import Dict, List, Optional, Any, Type, Union, get_args
+from typing import Dict, List, Literal, Optional, Any, Type, Union, get_args
 from enum import Enum
 from pydantic import BaseModel, Field, create_model
 
@@ -547,7 +547,7 @@ class DeviceChangeEntry(BaseModel):
     reflect the current state; for "delete" both are null.
     """
     device_name: str = Field(description="Device name")
-    op: str = Field(description="Either 'upsert' or 'delete'")
+    op: Literal["upsert", "delete"] = Field(description="Either 'upsert' or 'delete'")
     version: int = Field(description="Audit log id of the change that produced this state")
     metadata: Optional[DeviceMetadata] = Field(default=None)
     spec: Optional[DeviceInstantiationSpec] = Field(default=None)

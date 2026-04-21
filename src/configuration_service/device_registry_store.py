@@ -493,33 +493,35 @@ class DeviceRegistryStore:
         reset_occurred = reset_row is not None
 
         placeholders = ",".join("?" * len(self._CHANGE_FEED_OPS))
+        # Single query joining audit log (for latest op per device in range)
+        # with device_registry (for current state). A device whose latest op
+        # is "delete" won't have a matching registry row — the LEFT JOIN
+        # yields NULL columns, which we translate into op="delete".
         cursor = conn.execute(
             f"""
-            SELECT device_name, MAX(id) AS latest_id, operation
-            FROM device_audit_log
-            WHERE id > ?
-              AND operation IN ({placeholders})
-              AND device_name != '*'
-            GROUP BY device_name
+            SELECT a.device_name, a.id AS latest_id, a.operation,
+                   r.device_metadata, r.instantiation_spec
+            FROM device_audit_log a
+            LEFT JOIN device_registry r ON r.name = a.device_name
+            WHERE a.id IN (
+                SELECT MAX(id) FROM device_audit_log
+                WHERE id > ?
+                  AND operation IN ({placeholders})
+                  AND device_name != '*'
+                GROUP BY device_name
+            )
+            ORDER BY a.id
             """,
             (since_version, *self._CHANGE_FEED_OPS),
         )
-        per_device = [
-            (r["device_name"], int(r["latest_id"]))
-            for r in cursor.fetchall()
-        ]
 
         changes: List[Dict[str, Any]] = []
-        for device_name, latest_id in per_device:
-            op_row = conn.execute(
-                "SELECT operation FROM device_audit_log WHERE id = ?", (latest_id,)
-            ).fetchone()
-            latest_op = op_row["operation"] if op_row else "delete"
-
-            if latest_op == "delete":
+        for row in cursor.fetchall():
+            latest_id = int(row["latest_id"])
+            if row["operation"] == "delete" or row["device_metadata"] is None:
                 changes.append(
                     {
-                        "device_name": device_name,
+                        "device_name": row["device_name"],
                         "op": "delete",
                         "version": latest_id,
                         "metadata": None,
@@ -528,29 +530,21 @@ class DeviceRegistryStore:
                 )
                 continue
 
-            device = self.get_device(device_name)
-            if device is None:
-                changes.append(
-                    {
-                        "device_name": device_name,
-                        "op": "delete",
-                        "version": latest_id,
-                        "metadata": None,
-                        "spec": None,
-                    }
-                )
-            else:
-                changes.append(
-                    {
-                        "device_name": device_name,
-                        "op": "upsert",
-                        "version": latest_id,
-                        "metadata": device["metadata"],
-                        "spec": device["spec"],
-                    }
-                )
-
-        changes.sort(key=lambda c: c["version"])
+            metadata = DeviceMetadata.model_validate_json(row["device_metadata"])
+            spec = (
+                DeviceInstantiationSpec.model_validate_json(row["instantiation_spec"])
+                if row["instantiation_spec"]
+                else None
+            )
+            changes.append(
+                {
+                    "device_name": row["device_name"],
+                    "op": "upsert",
+                    "version": latest_id,
+                    "metadata": metadata,
+                    "spec": spec,
+                }
+            )
 
         return {
             "current_version": current_version,
